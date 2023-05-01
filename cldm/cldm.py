@@ -21,6 +21,7 @@ from ldm.util import log_txt_as_img, exists, instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
 
 from cli import export_controlnet
+from cli import export_diffusion_model
 
 
 class ControlledUnetModel(UNetModel):
@@ -35,6 +36,9 @@ class ControlledUnetModel(UNetModel):
                 hs.append(h)
             h = self.middle_block(h, emb, context)
 
+        if export_diffusion_model:
+            return h, emb, hs[0], hs[1], hs[2], hs[3], hs[4], hs[5], hs[6], hs[7], hs[8], hs[9], hs[10], hs[11]
+
         if control is not None:
             h += control.pop()
 
@@ -46,6 +50,21 @@ class ControlledUnetModel(UNetModel):
             h = module(h, emb, context)
 
         h = h.type(x.dtype)
+        return self.out(h)
+
+    def forward2(self, h, emb, context, h6, h7, h8, h9, h10, h11):
+        hs = [h6, h7, h8, h9, h10, h11]
+        for i, module in enumerate(self.output_blocks[:6]):
+            h = torch.cat([h, hs.pop()], dim=1)
+            h = module(h, emb, context)
+        return h
+
+    def forward3(self, h, emb, context, h0, h1, h2, h3, h4, h5):
+        hs = [h0, h1, h2, h3, h4, h5]
+        for i, module in enumerate(self.output_blocks[6:]):
+            h = torch.cat([h, hs.pop()], dim=1)
+            h = module(h, emb, context)
+
         return self.out(h)
 
 
@@ -342,18 +361,88 @@ class ControlLDM(LatentDiffusion):
             control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
 
             if export_controlnet:
-                print("------>", "export start")
+                print("------>", "export control_net start")
                 from torch.autograd import Variable
                 xx = (Variable(x_noisy), Variable(torch.cat(cond['c_concat'], 1)), Variable(t), Variable(cond_txt))
                 torch.onnx.export(
                     self.control_model, xx, 'control_model_xxx.onnx',
                     input_names=["x", "hint", "timesteps", "context"],
                     output_names=[
-                        "out0", "out1", "out2", "out3", "out4", "out5", "out6", 
+                        "out0", "out1", "out2", "out3", "out4", "out5", "out6",
                         "out7", "out8", "out9", "out10", "out11", "out12"],
                     dynamic_axes={
-                        'x': {0: 'n', 2: 'h', 3: 'w'}, 'hint': {0: 'n', 2: 'h0', 3: 'w0'}, 
-                        'timesteps': {0: 'n'}, 'context' : {0: 'n'}},
+                        'x': {0: 'n', 2: 'h', 3: 'w'}, 'hint': {0: 'n', 2: 'h0', 3: 'w0'},
+                        'timesteps': {0: 'n'}, 'context': {0: 'n'}},
+                    verbose=False, opset_version=12
+                )
+                print("<------", "export finished")
+                sys.exit(0)
+
+            if export_diffusion_model:
+                print("------>", "export diffusion_emb start")
+                from torch.autograd import Variable
+                xx = (Variable(x_noisy), Variable(t), Variable(cond_txt))
+                torch.onnx.export(
+                    diffusion_model, xx, 'diffusion_emb.onnx',
+                    input_names=["x", "timesteps", "context"],
+                    output_names=["h", "emb", "h0", "h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8", "h9", "h10", "h11"],
+                    dynamic_axes={'x': {0: 'n', 2: 'h', 3: 'w'}, 'timesteps': {0: 'n'}, 'context': {0: 'n'},
+                                  'h': {0: 'n', 2: 'h1', 3: 'w1'}, 'emb': {0: 'n'}, 'h0': {0: 'n', 2: 'h1', 3: 'w1'},
+                                  'h1': {0: 'n', 2: 'h1', 3: 'w1'}, 'h2': {0: 'n', 2: 'h1', 3: 'w1'},
+                                  'h3': {0: 'n', 2: 'h2', 3: 'w2'}, 'h4': {0: 'n', 2: 'h2', 3: 'w2'},
+                                  'h5': {0: 'n', 2: 'h2', 3: 'w2'}, 'h6': {0: 'n', 2: 'h3', 3: 'w3'},
+                                  'h7': {0: 'n', 2: 'h3', 3: 'w3'}, 'h8': {0: 'n', 2: 'h3', 3: 'w3'},
+                                  'h9': {0: 'n', 2: 'h4', 3: 'w4'}, 'h10': {0: 'n', 2: 'h4', 3: 'w4'},
+                                  'h11': {0: 'n', 2: 'h4', 3: 'w4'}},
+                    verbose=False, opset_version=12
+                )
+                print("<------", "export finished")
+
+                out = diffusion_model(x_noisy, t, context=cond_txt)
+                h = out[0]
+                emb = out[1]
+                hs = out[2:]
+                print("------>", "export diffusion_mid start")
+                from torch.autograd import Variable
+                diffusion_model.forward = diffusion_model.forward2
+                xx = (
+                    Variable(h), Variable(emb), Variable(cond_txt),
+                    Variable(hs[6]), Variable(hs[7]), Variable(hs[8]), Variable(hs[9]),
+                    Variable(hs[10]), Variable(hs[11]))
+                torch.onnx.export(
+                    diffusion_model, xx, 'diffusion_mid.onnx',
+                    input_names=[
+                        "h", "emb", "context", "h6", "h7", "h8", "h9", "h10", "h11"],
+                    output_names=["out"],
+                    dynamic_axes={'h': {0: 'n', 2: 'h4', 3: 'w4'}, 'emb': {0: 'n'}, 'context': {0: 'n'},
+                                  'h6': {0: 'n', 2: 'h3', 3: 'w3'}, 'h7': {0: 'n', 2: 'h3', 3: 'w3'},
+                                  'h8': {0: 'n', 2: 'h3', 3: 'w3'}, 'h9': {0: 'n', 2: 'h4', 3: 'w4'},
+                                  'h10': {0: 'n', 2: 'h4', 3: 'w4'}, 'h11': {0: 'n', 2: 'h4', 3: 'w4'},
+                                  'out': {0: 'n', 2: 'h2', 3: 'w2'}},
+                    verbose=False, opset_version=12
+                )
+                print("<------", "export finished")
+
+                h = diffusion_model.forward2(
+                    h, emb, cond_txt,
+                    hs[6], hs[7], hs[8], hs[9], hs[10], hs[11])
+                print("------>", "export diffusion_out start")
+                from torch.autograd import Variable
+                diffusion_model.forward = diffusion_model.forward3
+                xx = (
+                    Variable(h), Variable(emb), Variable(cond_txt),
+                    Variable(hs[0]), Variable(hs[1]), Variable(hs[2]), Variable(hs[3]),
+                    Variable(hs[4]), Variable(hs[5]))
+                torch.onnx.export(
+                    diffusion_model, xx, 'diffusion_out.onnx',
+                    input_names=[
+                        "h", "emb", "context", "h0", "h1", "h2", "h3", "h4", "h5"],
+                    output_names=["out"],
+                    dynamic_axes={'h': {0: 'n', 2: 'h2', 3: 'w2'}, 'emb': {0: 'n'}, 'context': {0: 'n'},
+                                  'h0': {0: 'n', 2: 'h1', 3: 'w1'}, 'h1': {0: 'n', 2: 'h1', 3: 'w1'},
+                                  'h2': {0: 'n', 2: 'h1', 3: 'w1'}, 'h3': {0: 'n', 2: 'h2', 3: 'w2'},
+                                  'h4': {0: 'n', 2: 'h2', 3: 'w2'}, 'h5': {0: 'n', 2: 'h2', 3: 'w2'},
+                                  'out': {0: 'n', 2: 'h', 3: 'w'}},
                     verbose=False, opset_version=12
                 )
                 print("<------", "export finished")

@@ -831,7 +831,7 @@ class LatentDiffusion(DDPM):
         z = 1. / self.scale_factor * z
         
         if export_autoencoder:
-            print("------>", "export start")
+            print("------>", "export autoencoder start")
             from torch.autograd import Variable
             x = Variable(z)
             self.first_stage_model.forward = self.first_stage_model.decode
