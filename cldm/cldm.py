@@ -1,3 +1,5 @@
+import sys
+
 import einops
 import torch
 import torch as th
@@ -17,6 +19,8 @@ from ldm.modules.diffusionmodules.openaimodel import UNetModel, TimestepEmbedSeq
 from ldm.models.diffusion.ddpm import LatentDiffusion
 from ldm.util import log_txt_as_img, exists, instantiate_from_config
 from ldm.models.diffusion.ddim import DDIMSampler
+
+from cli import export_controlnet
 
 
 class ControlledUnetModel(UNetModel):
@@ -325,6 +329,7 @@ class ControlLDM(LatentDiffusion):
         control = control.to(memory_format=torch.contiguous_format).float()
         return x, dict(c_crossattn=[c], c_concat=[control])
 
+    # apply_model
     def apply_model(self, x_noisy, t, cond, *args, **kwargs):
         assert isinstance(cond, dict)
         diffusion_model = self.model.diffusion_model
@@ -335,6 +340,25 @@ class ControlLDM(LatentDiffusion):
             eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=None, only_mid_control=self.only_mid_control)
         else:
             control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
+
+            if export_controlnet:
+                print("------>", "export start")
+                from torch.autograd import Variable
+                xx = (Variable(x_noisy), Variable(torch.cat(cond['c_concat'], 1)), Variable(t), Variable(cond_txt))
+                torch.onnx.export(
+                    self.control_model, xx, 'control_model_xxx.onnx',
+                    input_names=["x", "hint", "timesteps", "context"],
+                    output_names=[
+                        "out0", "out1", "out2", "out3", "out4", "out5", "out6", 
+                        "out7", "out8", "out9", "out10", "out11", "out12"],
+                    dynamic_axes={
+                        'x': {0: 'n', 2: 'h', 3: 'w'}, 'hint': {0: 'n', 2: 'h0', 3: 'w0'}, 
+                        'timesteps': {0: 'n'}, 'context' : {0: 'n'}},
+                    verbose=False, opset_version=12
+                )
+                print("<------", "export finished")
+                sys.exit(0)
+
             control = [c * scale for c, scale in zip(control, self.control_scales)]
             eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
 

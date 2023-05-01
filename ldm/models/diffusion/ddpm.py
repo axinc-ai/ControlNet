@@ -6,6 +6,8 @@ https://github.com/CompVis/taming-transformers
 -- merci
 """
 
+import sys
+
 import torch
 import torch.nn as nn
 import numpy as np
@@ -26,6 +28,8 @@ from ldm.modules.distributions.distributions import normal_kl, DiagonalGaussianD
 from ldm.models.autoencoder import IdentityFirstStage, AutoencoderKL
 from ldm.modules.diffusionmodules.util import make_beta_schedule, extract_into_tensor, noise_like
 from ldm.models.diffusion.ddim import DDIMSampler
+
+from cli import export_autoencoder
 
 
 __conditioning_keys__ = {'concat': 'c_concat',
@@ -825,6 +829,22 @@ class LatentDiffusion(DDPM):
             z = rearrange(z, 'b h w c -> b c h w').contiguous()
 
         z = 1. / self.scale_factor * z
+        
+        if export_autoencoder:
+            print("------>", "export start")
+            from torch.autograd import Variable
+            x = Variable(z)
+            self.first_stage_model.forward = self.first_stage_model.decode
+            torch.onnx.export(
+                self.first_stage_model, x, 'autoencoder.onnx',
+                input_names=["input"],
+                output_names=["output"],
+                dynamic_axes={'input' : {0 : 'n', 2 : 'h', 3 : 'w'}, 'output' : {0 : 'n', 2 : 'ho', 3 : 'wo'}},
+                verbose=False, opset_version=11
+            )
+            print("<------", "export finished")
+            sys.exit(0)
+        
         return self.first_stage_model.decode(z)
 
     @torch.no_grad()
