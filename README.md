@@ -69,6 +69,48 @@ We provide 9 Gradio apps with these models.
 
 All test images can be found at the folder "test_imgs".
 
+## CLI
+
+### Inference
+
+```bash
+$ python3 cli.py --model canny
+```
+
+```bash
+$ python3 cli.py --model pose
+```
+
+```bash
+$ python3 cli.py --model seg
+```
+
+### ONNX Export
+
+```bash
+$ python3 cli.py --model XXX ---export-controlnet
+```
+
+```bash
+$ python3 cli.py --export-diffusion-model
+```
+
+```bash
+$ python3 cli.py --export-autoencoder
+```
+
+```bash
+$ python3 cli.py --model pose --export-pose-body
+```
+
+```bash
+$ python3 cli.py --model pose --export-pose-hand
+```
+
+```bash
+$ python3 cli.py --model seg ---export-upernet
+```
+
 ## ControlNet with Canny Edge
 
 Stable Diffusion 1.5 + ControlNet (using simple Canny edge detection)
