@@ -1,3 +1,5 @@
+import sys
+
 import cv2
 import json
 import numpy as np
@@ -11,6 +13,9 @@ from skimage.measure import label
 
 from .model import handpose_model
 from . import util
+
+from cli import export_pose_hand
+
 
 class Hand(object):
     def __init__(self, model_path):
@@ -48,6 +53,20 @@ class Hand(object):
                 output = self.model(data).cpu().numpy()
                 # output = self.model(data).numpy()q
 
+                if export_pose_hand:
+                    print("------>", "export pose_hand start")
+                    from torch.autograd import Variable
+                    x = Variable(data)
+                    torch.onnx.export(
+                        self.model, x, 'pose_hand.onnx',
+                        input_names=["data"],
+                        output_names=["output"],
+                        dynamic_axes={'data': {2: 'h', 3: 'w'}},
+                        verbose=False, opset_version=11
+                    )
+                    print("<------", "export finished")
+                    sys.exit(0)
+
             # extract outputs, resize, and remove padding
             heatmap = np.transpose(np.squeeze(output), (1, 2, 0))  # output 1 is heatmaps
             heatmap = cv2.resize(heatmap, (0, 0), fx=stride, fy=stride, interpolation=cv2.INTER_CUBIC)
@@ -73,6 +92,7 @@ class Hand(object):
             y, x = util.npmax(map_ori)
             all_peaks.append([x, y])
         return np.array(all_peaks)
+
 
 if __name__ == "__main__":
     hand_estimation = Hand('../model/hand_pose_model.pth')

@@ -1,3 +1,5 @@
+import sys
+
 import cv2
 import numpy as np
 import math
@@ -10,6 +12,9 @@ from torchvision import transforms
 
 from . import util
 from .model import bodypose_model
+
+from cli import export_pose_body
+
 
 class Body(object):
     def __init__(self, model_path):
@@ -46,6 +51,22 @@ class Body(object):
             # data = data.permute([2, 0, 1]).unsqueeze(0).float()
             with torch.no_grad():
                 Mconv7_stage6_L1, Mconv7_stage6_L2 = self.model(data)
+
+                if export_pose_body:
+                    print("------>", "export pose_body start")
+                    from torch.autograd import Variable
+                    x = Variable(data)
+                    torch.onnx.export(
+                        self.model, x, 'pose_body.onnx',
+                        input_names=["data"],
+                        output_names=["Mconv7_stage6_L1", "Mconv7_stage6_L2"],
+                        dynamic_axes={'data': {2: 'h', 3: 'w'}, 'Mconv7_stage6_L1': {2: 'oh', 3: 'ow'},
+                                      'Mconv7_stage6_L2': {2: 'oh', 3: 'ow'}},
+                        verbose=False, opset_version=11
+                    )
+                    print("<------", "export finished")
+                    sys.exit(0)
+
             Mconv7_stage6_L1 = Mconv7_stage6_L1.cpu().numpy()
             Mconv7_stage6_L2 = Mconv7_stage6_L2.cpu().numpy()
 
@@ -207,6 +228,7 @@ class Body(object):
         # subset: n*20 array, 0-17 is the index in candidate, 18 is the total score, 19 is the total parts
         # candidate: x, y, score, id
         return candidate, subset
+
 
 if __name__ == "__main__":
     body_estimation = Body('../model/body_pose_model.pth')

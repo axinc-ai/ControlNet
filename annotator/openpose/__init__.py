@@ -13,6 +13,8 @@ from .body import Body
 from .hand import Hand
 from annotator.util import annotator_ckpts_path
 
+from cli import export_pose_hand
+
 
 body_model_path = "https://huggingface.co/lllyasviel/ControlNet/resolve/main/annotator/ckpts/body_pose_model.pth"
 hand_model_path = "https://huggingface.co/lllyasviel/ControlNet/resolve/main/annotator/ckpts/hand_pose_model.pth"
@@ -37,7 +39,7 @@ class OpenposeDetector:
             candidate, subset = self.body_estimation(oriImg)
             canvas = np.zeros_like(oriImg)
             canvas = util.draw_bodypose(canvas, candidate, subset)
-            if hand:
+            if hand or export_pose_hand:
                 hands_list = util.handDetect(candidate, subset, oriImg)
                 all_hand_peaks = []
                 for x, y, w, is_left in hands_list:
