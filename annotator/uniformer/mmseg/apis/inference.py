@@ -7,6 +7,8 @@ from annotator.uniformer.mmcv.runner import load_checkpoint
 from annotator.uniformer.mmseg.datasets.pipelines import Compose
 from annotator.uniformer.mmseg.models import build_segmentor
 
+from cli import export_upernet
+
 
 def init_segmentor(config, checkpoint=None, device='cuda:0'):
     """Initialize a segmentor from config file.
@@ -81,6 +83,8 @@ def inference_segmentor(model, img):
     device = next(model.parameters()).device  # model device
     # build the data pipeline
     test_pipeline = [LoadImage()] + cfg.data.test.pipeline[1:]
+    if export_upernet:
+        test_pipeline[1]["img_scale"] = (768, 768)
     test_pipeline = Compose(test_pipeline)
     # prepare data
     data = dict(img=img)

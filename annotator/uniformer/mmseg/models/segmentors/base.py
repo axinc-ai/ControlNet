@@ -1,3 +1,5 @@
+import sys
+
 import logging
 import warnings
 from abc import ABCMeta, abstractmethod
@@ -9,6 +11,8 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from annotator.uniformer.mmcv.runner import auto_fp16
+
+from cli import export_upernet
 
 
 class BaseSegmentor(nn.Module):
@@ -103,6 +107,21 @@ class BaseSegmentor(nn.Module):
             assert all(shape == pad_shapes[0] for shape in pad_shapes)
 
         if num_augs == 1:
+            if export_upernet:
+                print("------>", "export upernet_global_small start")
+                from torch.autograd import Variable
+                self.forward = self.simple_test
+                x = Variable(imgs[0])
+                torch.onnx.export(
+                    self, x, 'upernet_global_small.onnx',
+                    input_names=["img"],
+                    output_names=["seg_logit"],
+
+                    verbose=False, opset_version=11
+                )
+                print("<------", "export finished")
+                sys.exit(0)
+
             return self.simple_test(imgs[0], img_metas[0], **kwargs)
         else:
             return self.aug_test(imgs, img_metas, **kwargs)

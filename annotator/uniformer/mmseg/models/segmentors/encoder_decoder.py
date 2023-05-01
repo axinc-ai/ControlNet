@@ -8,6 +8,8 @@ from .. import builder
 from ..builder import SEGMENTORS
 from .base import BaseSegmentor
 
+from cli import export_upernet
+
 
 @SEGMENTORS.register_module()
 class EncoderDecoder(BaseSegmentor):
@@ -247,25 +249,27 @@ class EncoderDecoder(BaseSegmentor):
         """
 
         assert self.test_cfg.mode in ['slide', 'whole']
-        ori_shape = img_meta[0]['ori_shape']
-        assert all(_['ori_shape'] == ori_shape for _ in img_meta)
+        if not export_upernet:
+            ori_shape = img_meta[0]['ori_shape']
+            assert all(_['ori_shape'] == ori_shape for _ in img_meta)
         if self.test_cfg.mode == 'slide':
             seg_logit = self.slide_inference(img, img_meta, rescale)
         else:
             seg_logit = self.whole_inference(img, img_meta, rescale)
         output = F.softmax(seg_logit, dim=1)
-        flip = img_meta[0]['flip']
-        if flip:
-            flip_direction = img_meta[0]['flip_direction']
-            assert flip_direction in ['horizontal', 'vertical']
-            if flip_direction == 'horizontal':
-                output = output.flip(dims=(3, ))
-            elif flip_direction == 'vertical':
-                output = output.flip(dims=(2, ))
+        if not export_upernet:
+            flip = img_meta[0]['flip']
+            if flip:
+                flip_direction = img_meta[0]['flip_direction']
+                assert flip_direction in ['horizontal', 'vertical']
+                if flip_direction == 'horizontal':
+                    output = output.flip(dims=(3, ))
+                elif flip_direction == 'vertical':
+                    output = output.flip(dims=(2, ))
 
         return output
 
-    def simple_test(self, img, img_meta, rescale=True):
+    def simple_test(self, img, img_meta={}, rescale=True):
         """Simple test with single image."""
         seg_logit = self.inference(img, img_meta, rescale)
         seg_pred = seg_logit.argmax(dim=1)
